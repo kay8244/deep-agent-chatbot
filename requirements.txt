@@ -1,0 +1,3 @@
+deep_agents_from_scratch @ git+https://github.com/kay8244/deep-agents-from-scratch.git
+streamlit>=1.40.0
+python-dotenv>=1.1.0
