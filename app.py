@@ -15,11 +15,22 @@ import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
 
-# 환경 변수 로드: Streamlit Cloud secrets → os.environ 으로 전달
+# 환경 변수 로드: .env (로컬) → Streamlit Cloud secrets (배포) 순서로 시도
 load_dotenv(override=True)
+
+# Streamlit Cloud secrets → os.environ 으로 강제 전달 (override)
 for key in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
-    if key not in os.environ and key in st.secrets:
-        os.environ[key] = st.secrets[key]
+    try:
+        if key in st.secrets:
+            os.environ[key] = st.secrets[key]
+    except Exception:
+        pass
+
+# API 키 로드 확인 (사이드바에 상태 표시용)
+_api_key_status = {
+    "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
+    "TAVILY_API_KEY": bool(os.environ.get("TAVILY_API_KEY")),
+}
 
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
@@ -174,6 +185,15 @@ def _render_sidebar() -> str:
             index=0,
             help="일반 대화: 빠른 LLM 직접 응답\n딥 리서치: 웹 검색 + 서브에이전트 심층 조사",
         )
+
+        st.divider()
+
+        # API 키 상태 표시
+        st.caption("🔑 API 키 상태")
+        for name, loaded in _api_key_status.items():
+            st.write(f"{'✅' if loaded else '❌'} {name}")
+        if not all(_api_key_status.values()):
+            st.error("API 키가 누락되었습니다. Secrets 설정을 확인하세요.")
 
         st.divider()
 
