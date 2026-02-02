@@ -9,10 +9,17 @@ Deep Agent 리서치 챗봇 - Streamlit 구현
 - 딥 리서치: 웹 검색 + 서브에이전트 위임 (심층 조사, 출처 포함)
 """
 
+import os
 import re
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
+
+# 환경 변수 로드: Streamlit Cloud secrets → os.environ 으로 전달
+load_dotenv(override=True)
+for key in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
+    if key not in os.environ and key in st.secrets:
+        os.environ[key] = st.secrets[key]
 
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
@@ -29,9 +36,6 @@ from deep_agents_from_scratch.prompts import (
     SUBAGENT_USAGE_INSTRUCTIONS,
     TODO_USAGE_INSTRUCTIONS,
 )
-
-# 환경 변수 로드
-load_dotenv(override=True)
 
 # 페이지 설정
 st.set_page_config(
