@@ -188,13 +188,13 @@ def _render_sidebar() -> str:
 
         st.divider()
 
-        # API 키 상태 표시 (앞 15자만 노출하여 디버깅)
+        # API 키 디버그 (앞 15자 + 끝 5자 + 길이)
         st.caption("🔑 API 키 상태")
         for name in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
             val = os.environ.get(name, "")
             if val:
-                preview = val[:15] + "..."
-                st.write(f"✅ `{name}`: `{preview}`")
+                st.write(f"✅ `{name}`")
+                st.code(f"앞: {val[:15]}...\n끝: ...{val[-5:]}\n길이: {len(val)}자", language=None)
             else:
                 st.write(f"❌ `{name}`: 없음")
         if not all(_api_key_status.values()):
