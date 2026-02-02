@@ -26,12 +26,6 @@ for key in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
     except Exception:
         pass
 
-# API 키 로드 확인 (사이드바에 상태 표시용)
-_api_key_status = {
-    "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
-    "TAVILY_API_KEY": bool(os.environ.get("TAVILY_API_KEY")),
-}
-
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
@@ -189,20 +183,6 @@ def _render_sidebar() -> str:
             index=0,
             help="일반 대화: 빠른 LLM 직접 응답\n딥 리서치: 웹 검색 + 서브에이전트 심층 조사",
         )
-
-        st.divider()
-
-        # API 키 디버그 (앞 15자 + 끝 5자 + 길이)
-        st.caption("🔑 API 키 상태")
-        for name in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
-            val = os.environ.get(name, "")
-            if val:
-                st.write(f"✅ `{name}`")
-                st.code(f"앞: {val[:15]}...\n끝: ...{val[-5:]}\n길이: {len(val)}자", language=None)
-            else:
-                st.write(f"❌ `{name}`: 없음")
-        if not all(_api_key_status.values()):
-            st.error("API 키가 누락되었습니다. Secrets 설정을 확인하세요.")
 
         st.divider()
 
