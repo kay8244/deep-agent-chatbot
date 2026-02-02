@@ -61,7 +61,7 @@ if "files" not in st.session_state:
 def _init_model():
     """메인 LLM을 한 번만 초기화합니다."""
     return init_chat_model(
-        model="anthropic:claude-sonnet-4-5",
+        model="anthropic:claude-3-5-haiku-20241022",
         temperature=0.0,
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
     )
