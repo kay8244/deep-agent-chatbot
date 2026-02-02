@@ -100,10 +100,27 @@ def _create_agent():
         date=now.strftime("%a %b %-d, %Y"),
     )
 
+    # 기존 파일을 우선 활용하도록 프롬프트 오버라이드
+    chatbot_todo_instructions = """Based upon the user's request:
+
+1. **First, check existing files**: Use ls() to see if relevant files already exist from previous research.
+2. If existing files are found, use read_file() to review them.
+3. **Evaluate sufficiency**: Can you answer the user's question using existing files alone?
+   - If YES: Answer directly based on existing files. No new research needed.
+   - If PARTIALLY: Create a TODO plan for only the missing information. Reuse existing files for what you already have.
+   - If NO (completely new topic): Create a full research plan with write_todos.
+4. After you accomplish a TODO, use read_todos to remind yourself of the plan.
+5. Mark your task as completed, and proceed to the next TODO.
+6. Continue this process until you have completed all TODOs.
+
+IMPORTANT: Do NOT start new research if existing files already contain the answer.
+IMPORTANT: Aim to batch research tasks into a *single TODO* in order to minimize the number of TODOs you have to keep track of.
+"""
+
     system_prompt = "\n\n".join(
         [
             "# TODO MANAGEMENT",
-            TODO_USAGE_INSTRUCTIONS,
+            chatbot_todo_instructions,
             "=" * 80,
             "# FILE SYSTEM USAGE",
             FILE_USAGE_INSTRUCTIONS,
