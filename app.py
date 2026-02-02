@@ -188,10 +188,15 @@ def _render_sidebar() -> str:
 
         st.divider()
 
-        # API 키 상태 표시
+        # API 키 상태 표시 (앞 15자만 노출하여 디버깅)
         st.caption("🔑 API 키 상태")
-        for name, loaded in _api_key_status.items():
-            st.write(f"{'✅' if loaded else '❌'} {name}")
+        for name in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
+            val = os.environ.get(name, "")
+            if val:
+                preview = val[:15] + "..."
+                st.write(f"✅ `{name}`: `{preview}`")
+            else:
+                st.write(f"❌ `{name}`: 없음")
         if not all(_api_key_status.values()):
             st.error("API 키가 누락되었습니다. Secrets 설정을 확인하세요.")
 
