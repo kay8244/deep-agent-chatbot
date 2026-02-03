@@ -26,6 +26,7 @@ for key in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY"):
     except Exception:
         pass
 
+from tavily import TavilyClient
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
@@ -34,7 +35,18 @@ from deep_agents_from_scratch.state import DeepAgentState
 from deep_agents_from_scratch.file_tools import ls, read_file, write_file
 from deep_agents_from_scratch.todo_tools import write_todos, read_todos
 from deep_agents_from_scratch.research_tools import tavily_search, think_tool
+import deep_agents_from_scratch.research_tools as _research_tools
 from deep_agents_from_scratch.task_tool import _create_task_tool
+
+# 패키지 내부의 모듈 레벨 클라이언트를 올바른 API 키로 재초기화
+_research_tools.tavily_client = TavilyClient(
+    api_key=os.environ.get("TAVILY_API_KEY", "")
+)
+_research_tools.summarization_model = init_chat_model(
+    model="anthropic:claude-3-5-haiku-20241022",
+    temperature=0.0,
+    api_key=os.environ.get("ANTHROPIC_API_KEY"),
+)
 from deep_agents_from_scratch.prompts import (
     FILE_USAGE_INSTRUCTIONS,
     RESEARCHER_INSTRUCTIONS,
