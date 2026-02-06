@@ -66,6 +66,12 @@ if "messages" not in st.session_state:
     st.session_state.messages = []  # [{role, content, sources?, mode?}]
 if "files" not in st.session_state:
     st.session_state.files = {}
+if "research_stage" not in st.session_state:
+    st.session_state.research_stage = "idle"  # "idle" | "plan_pending"
+if "pending_plan" not in st.session_state:
+    st.session_state.pending_plan = ""
+if "pending_query" not in st.session_state:
+    st.session_state.pending_query = ""
 
 
 # ── 캐시된 리소스 ─────────────────────────────────────────────
@@ -73,7 +79,7 @@ if "files" not in st.session_state:
 def _init_model():
     """메인 LLM을 한 번만 초기화합니다."""
     return init_chat_model(
-        model="anthropic:claude-3-5-haiku-20241022",
+        model="anthropic:claude-sonnet-4-5",
         temperature=0.0,
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
     )
@@ -112,27 +118,10 @@ def _create_agent():
         date=now.strftime("%a %b %-d, %Y"),
     )
 
-    # 기존 파일을 우선 활용하도록 프롬프트 오버라이드
-    chatbot_todo_instructions = """Based upon the user's request:
-
-1. **First, check existing files**: Use ls() to see if relevant files already exist from previous research.
-2. If existing files are found, use read_file() to review them.
-3. **Evaluate sufficiency**: Can you answer the user's question using existing files alone?
-   - If YES: Answer directly based on existing files. No new research needed.
-   - If PARTIALLY: Create a TODO plan for only the missing information. Reuse existing files for what you already have.
-   - If NO (completely new topic): Create a full research plan with write_todos.
-4. After you accomplish a TODO, use read_todos to remind yourself of the plan.
-5. Mark your task as completed, and proceed to the next TODO.
-6. Continue this process until you have completed all TODOs.
-
-IMPORTANT: Do NOT start new research if existing files already contain the answer.
-IMPORTANT: Aim to batch research tasks into a *single TODO* in order to minimize the number of TODOs you have to keep track of.
-"""
-
     system_prompt = "\n\n".join(
         [
             "# TODO MANAGEMENT",
-            chatbot_todo_instructions,
+            TODO_USAGE_INSTRUCTIONS,
             "=" * 80,
             "# FILE SYSTEM USAGE",
             FILE_USAGE_INSTRUCTIONS,
@@ -145,6 +134,31 @@ IMPORTANT: Aim to batch research tasks into a *single TODO* in order to minimize
     return create_agent(
         model, all_tools, system_prompt=system_prompt, state_schema=DeepAgentState
     )
+
+
+# ── 리서치 계획 생성 ──────────────────────────────────────────
+def _generate_plan(query: str) -> str:
+    """사용자 질문을 받아 리서치 계획만 생성합니다 (실제 리서치는 수행하지 않음)."""
+    model = _init_model()
+    plan_prompt = (
+        "당신은 리서치 플래너입니다. 아래 질문에 대해 리서치 계획만 작성하세요.\n"
+        "실제 리서치는 수행하지 마세요.\n\n"
+        "다음 형식으로 번호 매긴 단계별 리스트를 작성하세요:\n"
+        "1. [단계 설명]\n"
+        "2. [단계 설명]\n"
+        "...\n\n"
+        f"질문: {query}"
+    )
+    with st.spinner("📋 리서치 계획 생성 중..."):
+        response = model.invoke([HumanMessage(content=plan_prompt)])
+    if isinstance(response.content, str):
+        return response.content
+    parts = [
+        item["text"]
+        for item in response.content
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
+    return "\n".join(parts) if parts else str(response.content)
 
 
 # ── 유틸리티 ──────────────────────────────────────────────────
@@ -206,6 +220,7 @@ def _render_sidebar() -> str:
     with st.sidebar:
         st.header("⚙️ 설정")
 
+        # 모드 선택
         mode = st.radio(
             "대화 모드",
             options=["일반 대화", "딥 리서치"],
@@ -218,6 +233,9 @@ def _render_sidebar() -> str:
         if st.button("🗑️ 채팅 기록 삭제", use_container_width=True):
             st.session_state.messages = []
             st.session_state.files = {}
+            st.session_state.research_stage = "idle"
+            st.session_state.pending_plan = ""
+            st.session_state.pending_query = ""
             st.rerun()
 
         st.divider()
@@ -294,6 +312,7 @@ def _run_deep_research(agent, state: dict) -> tuple[str, dict, list[dict]]:
     response = _extract_ai_response(final_state.get("messages", []))
     files = final_state.get("files", state.get("files", {}))
 
+    # 이번 리서치에서 새로 생성된 파일에서만 출처 추출
     new_files = {k: v for k, v in files.items() if k not in files_before}
     sources = _extract_sources(new_files) if new_files else _extract_sources(files)
 
@@ -318,14 +337,17 @@ def main():
 
     mode = _render_sidebar()
 
+    # 채팅 히스토리 표시
     for msg in st.session_state.messages:
         _render_message(msg)
 
-    placeholder = (
-        "리서치할 주제를 입력하세요..."
-        if mode == "딥 리서치"
-        else "질문을 입력하세요..."
-    )
+    # 사용자 입력 처리
+    if mode == "딥 리서치" and st.session_state.research_stage == "plan_pending":
+        placeholder = "승인(진행/네/ok) 또는 수정 내용을 입력하세요..."
+    elif mode == "딥 리서치":
+        placeholder = "리서치할 주제를 입력하세요..."
+    else:
+        placeholder = "질문을 입력하세요..."
 
     if prompt := st.chat_input(placeholder):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -341,12 +363,48 @@ def main():
                         {"role": "assistant", "content": response}
                     )
 
-                else:  # 딥 리서치
+                elif st.session_state.research_stage == "idle":
+                    # 딥 리서치: 계획 생성 단계
+                    plan = _generate_plan(prompt)
+                    plan_message = (
+                        f"**📋 리서치 계획**\n\n{plan}\n\n---\n"
+                        "이 계획대로 진행할까요? "
+                        "승인하려면 **진행/네/ok** 등을 입력하고, "
+                        "수정이 필요하면 수정 내용을 입력해주세요."
+                    )
+                    st.markdown(plan_message)
+
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": plan_message}
+                    )
+                    st.session_state.research_stage = "plan_pending"
+                    st.session_state.pending_plan = plan
+                    st.session_state.pending_query = prompt
+
+                else:
+                    # 딥 리서치: 승인/수정 처리 단계
+                    approval_keywords = {
+                        "진행", "네", "좋아", "ㅇㅇ", "ok", "yes",
+                        "응", "좋아요", "확인", "ㅇ", "고", "시작",
+                    }
+                    user_input = prompt.strip().lower()
+
+                    if user_input in approval_keywords:
+                        plan = st.session_state.pending_plan
+                    else:
+                        plan = prompt  # 수정 내용을 새 계획으로 사용
+
+                    # 원본 질문 + 확정된 계획을 에이전트에 전달
+                    research_prompt = (
+                        f"사용자 질문: {st.session_state.pending_query}\n\n"
+                        f"리서치 계획:\n{plan}\n\n"
+                        "위 계획에 따라 리서치를 수행하세요."
+                    )
+
                     agent = _create_agent()
+                    # 계획 승인 과정의 대화는 제외하고 리서치 프롬프트만 전달
                     agent_state = {
-                        "messages": _to_langchain_messages(
-                            st.session_state.messages
-                        ),
+                        "messages": [HumanMessage(content=research_prompt)],
                         "files": st.session_state.files,
                     }
 
@@ -368,6 +426,11 @@ def main():
                             "mode": "딥 리서치",
                         }
                     )
+
+                    # 상태 초기화
+                    st.session_state.research_stage = "idle"
+                    st.session_state.pending_plan = ""
+                    st.session_state.pending_query = ""
 
             except Exception as e:
                 error_msg = f"오류가 발생했습니다: {e}"
