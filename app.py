@@ -428,6 +428,8 @@ def main():
     else:
         placeholder = "질문을 입력하세요..."
 
+    _needs_rerun = False
+
     if prompt := st.chat_input(placeholder):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -516,11 +518,11 @@ def main():
                         }
                     )
 
-                    # 상태 초기화 후 rerun하여 사이드바에 파일 즉시 반영
+                    # 상태 초기화
                     st.session_state.research_stage = "idle"
                     st.session_state.pending_plan = ""
                     st.session_state.pending_query = ""
-                    st.rerun()
+                    _needs_rerun = True
 
             except Exception as e:
                 error_msg = f"오류가 발생했습니다: {e}"
@@ -529,6 +531,10 @@ def main():
                 st.session_state.messages.append(
                     {"role": "assistant", "content": error_msg}
                 )
+
+    # try/except 밖에서 rerun하여 RerunException이 잡히지 않도록 함
+    if _needs_rerun:
+        st.rerun()
 
 
 if __name__ == "__main__":
