@@ -119,6 +119,16 @@ def _create_agent():
         date=now.strftime("%a %b %-d, %Y"),
     )
 
+    citation_instructions = (
+        "# CITATION RULES\n"
+        "When writing the final report, you MUST follow these citation rules:\n"
+        "- After each factual claim, add an inline citation linking to the source URL.\n"
+        "- Use markdown link format: `문장 내용 ([출처제목](URL))`\n"
+        "- Example: 2024년 AI 시장 규모는 1조 달러에 달했다 ([Forbes](https://forbes.com/...)).\n"
+        "- Every fact must have at least one citation. Do not omit citations.\n"
+        "- At the end of the report, include a numbered '## 참고 문헌' section listing all sources.\n"
+    )
+
     system_prompt = "\n\n".join(
         [
             "# TODO MANAGEMENT",
@@ -129,6 +139,8 @@ def _create_agent():
             "=" * 80,
             "# SUB-AGENT DELEGATION",
             subagent_instructions,
+            "=" * 80,
+            citation_instructions,
         ]
     )
 
