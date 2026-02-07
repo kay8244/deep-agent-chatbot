@@ -69,7 +69,7 @@ if "messages" not in st.session_state:
 if "files" not in st.session_state:
     st.session_state.files = {}
 if "research_stage" not in st.session_state:
-    st.session_state.research_stage = "idle"  # "idle" | "plan_pending"
+    st.session_state.research_stage = "idle"  # "idle" | "plan_pending" | "follow_up"
 if "pending_plan" not in st.session_state:
     st.session_state.pending_plan = ""
 if "pending_query" not in st.session_state:
@@ -347,6 +347,66 @@ def _run_normal_chat(history: list[dict]) -> str:
     return "\n".join(parts) if parts else str(response.content)
 
 
+# ── 후속 대화 (리서치 결과 기반) ──────────────────────────────
+def _build_file_context(files: dict, max_chars: int = 50000) -> str:
+    """리서치 파일 내용을 LLM 컨텍스트 문자열로 변환합니다.
+
+    final/report/findings 파일을 우선 포함하고, 나머지는 공간이 남으면 추가합니다.
+    """
+    if not files:
+        return ""
+
+    # 우선순위 파일 분류
+    priority_keywords = ("final", "report", "findings", "comprehensive")
+    priority_files = {}
+    other_files = {}
+    for fname, content in files.items():
+        fname_lower = fname.lower()
+        if any(kw in fname_lower for kw in priority_keywords):
+            priority_files[fname] = content
+        else:
+            other_files[fname] = content
+
+    context_parts = []
+    total_chars = 0
+
+    for group in [priority_files, other_files]:
+        for fname, content in group.items():
+            entry = f"### 파일: {fname}\n{content}\n"
+            if total_chars + len(entry) > max_chars:
+                break
+            context_parts.append(entry)
+            total_chars += len(entry)
+
+    return "\n".join(context_parts)
+
+
+def _run_follow_up_chat(history: list[dict], files: dict) -> str:
+    """리서치 결과 파일을 컨텍스트로 포함하여 후속 질문에 답변합니다."""
+    model = _init_model()
+    file_context = _build_file_context(files)
+
+    system_msg = (
+        "당신은 리서치 결과를 바탕으로 후속 질문에 답변하는 어시스턴트입니다.\n"
+        "아래에 리서치에서 수집된 파일 내용이 제공됩니다. "
+        "이 자료를 근거로 정확하게 답변하세요.\n"
+        "답변 시 근거가 되는 출처(URL)가 있으면 인라인으로 포함하세요.\n\n"
+        f"## 리서치 자료\n\n{file_context}"
+    )
+
+    lc_messages = [HumanMessage(content=system_msg)] + _to_langchain_messages(history)
+    with st.spinner("💬 답변 생성 중..."):
+        response = model.invoke(lc_messages)
+    if isinstance(response.content, str):
+        return response.content
+    parts = [
+        item["text"]
+        for item in response.content
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
+    return "\n".join(parts) if parts else str(response.content)
+
+
 # ── 딥 리서치 실행 (스트리밍) ──────────────────────────────────
 def _run_deep_research(agent, state: dict) -> tuple[str, dict, list[dict]]:
     """에이전트를 스트리밍 모드로 실행하고 진행 상황을 표시합니다.
@@ -423,6 +483,8 @@ def main():
     # 사용자 입력 처리
     if mode == "딥 리서치" and st.session_state.research_stage == "plan_pending":
         placeholder = "승인(진행/네/ok) 또는 수정 내용을 입력하세요..."
+    elif mode == "딥 리서치" and st.session_state.research_stage == "follow_up":
+        placeholder = "후속 질문을 입력하세요... (새 주제는 '새 리서치'를 입력)"
     elif mode == "딥 리서치":
         placeholder = "리서치할 주제를 입력하세요..."
     else:
@@ -443,6 +505,26 @@ def main():
                     st.session_state.messages.append(
                         {"role": "assistant", "content": response}
                     )
+
+                elif st.session_state.research_stage == "follow_up":
+                    # 딥 리서치: 후속 대화 단계
+                    new_research_keywords = {"새 리서치", "새리서치", "new research", "새로운 리서치"}
+                    if prompt.strip().lower() in new_research_keywords:
+                        st.session_state.research_stage = "idle"
+                        st.session_state.files = {}
+                        msg = "새로운 리서치를 시작합니다. 리서치할 주제를 입력해주세요."
+                        st.markdown(msg)
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": msg}
+                        )
+                    else:
+                        response = _run_follow_up_chat(
+                            st.session_state.messages, st.session_state.files
+                        )
+                        st.markdown(response)
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": response}
+                        )
 
                 elif st.session_state.research_stage == "idle":
                     # 딥 리서치: 계획 생성 단계
@@ -518,8 +600,8 @@ def main():
                         }
                     )
 
-                    # 상태 초기화
-                    st.session_state.research_stage = "idle"
+                    # 리서치 완료 → 후속 대화 모드로 전환
+                    st.session_state.research_stage = "follow_up"
                     st.session_state.pending_plan = ""
                     st.session_state.pending_query = ""
                     _needs_rerun = True
