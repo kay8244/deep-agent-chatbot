@@ -9,6 +9,7 @@ Deep Agent 리서치 챗봇 - Streamlit 구현
 - 딥 리서치: 웹 검색 + 서브에이전트 위임 (심층 조사, 출처 포함)
 """
 
+import json
 import os
 import re
 from pathlib import Path
@@ -219,6 +220,22 @@ def _extract_sources(files: dict) -> list[dict]:
 
 
 LOCAL_SAVE_DIR = Path("research_outputs")
+TEST_CACHE_FILE = LOCAL_SAVE_DIR / "_last_research_cache.json"
+
+
+def _save_research_cache(response: str, files: dict, sources: list[dict]):
+    """마지막 리서치 결과를 JSON 캐시 파일에 저장합니다."""
+    LOCAL_SAVE_DIR.mkdir(exist_ok=True)
+    cache = {"response": response, "files": files, "sources": sources}
+    TEST_CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_research_cache() -> tuple[str, dict, list[dict]] | None:
+    """캐시된 리서치 결과를 로드합니다. 없으면 None 반환."""
+    if not TEST_CACHE_FILE.exists():
+        return None
+    cache = json.loads(TEST_CACHE_FILE.read_text(encoding="utf-8"))
+    return cache["response"], cache["files"], cache["sources"]
 
 
 def _save_files_to_disk(files: dict):
@@ -242,8 +259,8 @@ def _render_sources(sources: list[dict]):
 
 
 # ── 사이드바 ──────────────────────────────────────────────────
-def _render_sidebar() -> str:
-    """사이드바를 렌더링하고 선택된 모드를 반환합니다."""
+def _render_sidebar() -> tuple[str, bool]:
+    """사이드바를 렌더링하고 (모드, 테스트모드 여부)를 반환합니다."""
     with st.sidebar:
         st.header("⚙️ 설정")
 
@@ -254,6 +271,18 @@ def _render_sidebar() -> str:
             index=0,
             help="일반 대화: 빠른 LLM 직접 응답\n딥 리서치: 웹 검색 + 서브에이전트 심층 조사",
         )
+
+        test_mode = st.toggle(
+            "🧪 테스트 모드",
+            value=False,
+            help="켜면 API 호출 없이 마지막 캐시된 리서치 결과를 재사용합니다.",
+        )
+        if test_mode:
+            has_cache = TEST_CACHE_FILE.exists()
+            if has_cache:
+                st.caption("✅ 캐시 파일 있음 — API 호출 없이 테스트 가능")
+            else:
+                st.caption("⚠️ 캐시 없음 — 먼저 딥 리서치를 1회 실행하세요")
 
         st.divider()
 
@@ -283,7 +312,7 @@ def _render_sidebar() -> str:
         else:
             st.info("아직 저장된 파일이 없습니다.")
 
-    return mode
+    return mode, test_mode
 
 
 # ── 일반 대화 실행 ────────────────────────────────────────────
@@ -370,7 +399,7 @@ def main():
     st.title("🧠 Deep Agent 리서치 챗봇")
     st.caption("웹 검색 · 요약 · 서브에이전트 위임 기능을 갖춘 리서치 에이전트")
 
-    mode = _render_sidebar()
+    mode, test_mode = _render_sidebar()
 
     # 채팅 히스토리 표시
     for msg in st.session_state.messages:
@@ -429,25 +458,36 @@ def main():
                     else:
                         plan = prompt  # 수정 내용을 새 계획으로 사용
 
-                    # 원본 질문 + 확정된 계획을 에이전트에 전달
-                    research_prompt = (
-                        f"사용자 질문: {st.session_state.pending_query}\n\n"
-                        f"리서치 계획:\n{plan}\n\n"
-                        "위 계획에 따라 리서치를 수행하세요."
-                    )
+                    # 테스트 모드: 캐시된 결과 사용
+                    if test_mode:
+                        cached = _load_research_cache()
+                        if cached:
+                            response, files, sources = cached
+                            st.info("🧪 테스트 모드: 캐시된 결과를 표시합니다.")
+                        else:
+                            response = "⚠️ 캐시된 리서치 결과가 없습니다. 테스트 모드를 끄고 딥 리서치를 1회 실행해주세요."
+                            files, sources = st.session_state.files, []
+                    else:
+                        # 원본 질문 + 확정된 계획을 에이전트에 전달
+                        research_prompt = (
+                            f"사용자 질문: {st.session_state.pending_query}\n\n"
+                            f"리서치 계획:\n{plan}\n\n"
+                            "위 계획에 따라 리서치를 수행하세요."
+                        )
 
-                    agent = _create_agent()
-                    # 계획 승인 과정의 대화는 제외하고 리서치 프롬프트만 전달
-                    agent_state = {
-                        "messages": [HumanMessage(content=research_prompt)],
-                        "files": st.session_state.files,
-                    }
+                        agent = _create_agent()
+                        agent_state = {
+                            "messages": [HumanMessage(content=research_prompt)],
+                            "files": st.session_state.files,
+                        }
 
-                    response, files, sources = _run_deep_research(
-                        agent, agent_state
-                    )
+                        response, files, sources = _run_deep_research(
+                            agent, agent_state
+                        )
+                        _save_files_to_disk(files)
+                        _save_research_cache(response, files, sources)
+
                     st.session_state.files = files
-                    _save_files_to_disk(files)
 
                     st.markdown(response)
                     if sources:
