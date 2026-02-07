@@ -11,6 +11,7 @@ Deep Agent 리서치 챗봇 - Streamlit 구현
 
 import os
 import re
+from pathlib import Path
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
@@ -205,6 +206,20 @@ def _extract_sources(files: dict) -> list[dict]:
     return sources
 
 
+LOCAL_SAVE_DIR = Path("research_outputs")
+
+
+def _save_files_to_disk(files: dict):
+    """가상 파일시스템의 파일들을 로컬 디스크에 자동 저장합니다."""
+    if not files:
+        return
+    LOCAL_SAVE_DIR.mkdir(exist_ok=True)
+    for fname, content in files.items():
+        safe_name = Path(fname).name  # 경로 트래버설 방지
+        filepath = LOCAL_SAVE_DIR / safe_name
+        filepath.write_text(content, encoding="utf-8")
+
+
 def _render_sources(sources: list[dict]):
     """출처 목록을 렌더링합니다."""
     if not sources:
@@ -245,6 +260,14 @@ def _render_sidebar() -> str:
             for fname, content in st.session_state.files.items():
                 with st.expander(fname):
                     st.code(content, language="markdown")
+                    st.download_button(
+                        label=f"⬇️ {fname} 다운로드",
+                        data=content,
+                        file_name=Path(fname).name,
+                        mime="text/markdown",
+                        key=f"dl_{fname}",
+                    )
+            st.caption(f"📂 자동 저장 경로: `{LOCAL_SAVE_DIR.resolve()}`")
         else:
             st.info("아직 저장된 파일이 없습니다.")
 
@@ -412,6 +435,7 @@ def main():
                         agent, agent_state
                     )
                     st.session_state.files = files
+                    _save_files_to_disk(files)
 
                     st.markdown(response)
                     if sources:
