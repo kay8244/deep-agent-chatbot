@@ -526,6 +526,34 @@ def main():
                             {"role": "assistant", "content": response}
                         )
 
+                elif st.session_state.research_stage == "idle" and test_mode:
+                    # 테스트 모드: 캐시에서 바로 결과 로드 (API 호출 없음)
+                    cached = _load_research_cache()
+                    if cached:
+                        response, files, sources = cached
+                        st.session_state.files = files
+                        st.info("🧪 테스트 모드: 캐시된 리서치 결과를 표시합니다.")
+                        st.markdown(response)
+                        if sources:
+                            _render_sources(sources)
+                        st.caption("🔬 딥 리서치")
+                        st.session_state.messages.append(
+                            {
+                                "role": "assistant",
+                                "content": response,
+                                "sources": sources,
+                                "mode": "딥 리서치",
+                            }
+                        )
+                        st.session_state.research_stage = "follow_up"
+                        _needs_rerun = True
+                    else:
+                        msg = "⚠️ 캐시된 결과가 없습니다. 테스트 모드를 끄고 딥 리서치를 1회 실행해주세요."
+                        st.warning(msg)
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": msg}
+                        )
+
                 elif st.session_state.research_stage == "idle":
                     # 딥 리서치: 계획 생성 단계
                     plan = _generate_plan(prompt)
