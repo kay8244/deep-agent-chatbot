@@ -238,14 +238,29 @@ def _load_research_cache() -> tuple[str, dict, list[dict]] | None:
     return cache["response"], cache["files"], cache["sources"]
 
 
-def _save_files_to_disk(files: dict):
-    """가상 파일시스템의 파일들을 로컬 디스크에 자동 저장합니다."""
+def _sanitize_folder_name(query: str) -> str:
+    """질문 텍스트를 폴더명으로 사용 가능한 형태로 변환합니다."""
+    # 파일시스템에 안전하지 않은 문자 제거
+    safe = re.sub(r'[\\/:*?"<>|]', "", query)
+    # 공백 정리 및 길이 제한
+    safe = safe.strip()[:50].strip()
+    return safe or "research"
+
+
+def _save_files_to_disk(files: dict, query: str = ""):
+    """가상 파일시스템의 파일들을 로컬 디스크에 자동 저장합니다.
+
+    research_outputs/<질문요약>/ 하위에 번호 매긴 파일로 저장합니다.
+    """
     if not files:
         return
-    LOCAL_SAVE_DIR.mkdir(exist_ok=True)
-    for fname, content in files.items():
-        safe_name = Path(fname).name  # 경로 트래버설 방지
-        filepath = LOCAL_SAVE_DIR / safe_name
+    folder_name = _sanitize_folder_name(query) if query else "research"
+    save_dir = LOCAL_SAVE_DIR / folder_name
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for idx, (fname, content) in enumerate(files.items(), 1):
+        safe_name = Path(fname).name
+        numbered_name = f"{idx:02d}_{safe_name}"
+        filepath = save_dir / numbered_name
         filepath.write_text(content, encoding="utf-8")
 
 
@@ -484,7 +499,7 @@ def main():
                         response, files, sources = _run_deep_research(
                             agent, agent_state
                         )
-                        _save_files_to_disk(files)
+                        _save_files_to_disk(files, st.session_state.pending_query)
                         _save_research_cache(response, files, sources)
 
                     st.session_state.files = files
