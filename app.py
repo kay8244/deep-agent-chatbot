@@ -473,17 +473,15 @@ def main():
                     else:
                         plan = prompt  # 수정 내용을 새 계획으로 사용
 
-                    # 테스트 모드: 캐시된 결과 사용
-                    if test_mode:
-                        cached = _load_research_cache()
-                        if cached:
-                            response, files, sources = cached
-                            st.info("🧪 테스트 모드: 캐시된 결과를 표시합니다.")
-                        else:
-                            response = "⚠️ 캐시된 리서치 결과가 없습니다. 테스트 모드를 끄고 딥 리서치를 1회 실행해주세요."
-                            files, sources = st.session_state.files, []
+                    # 테스트 모드 + 캐시 있음: 캐시된 결과 사용
+                    cached = _load_research_cache() if test_mode else None
+                    if cached:
+                        response, files, sources = cached
+                        st.info("🧪 테스트 모드: 캐시된 결과를 표시합니다.")
                     else:
-                        # 원본 질문 + 확정된 계획을 에이전트에 전달
+                        # 실제 리서치 실행 (테스트 모드여도 캐시 없으면 fallback)
+                        if test_mode:
+                            st.warning("🧪 캐시 없음 — 실제 리서치를 실행합니다.")
                         research_prompt = (
                             f"사용자 질문: {st.session_state.pending_query}\n\n"
                             f"리서치 계획:\n{plan}\n\n"
