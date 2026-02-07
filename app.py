@@ -518,10 +518,11 @@ def main():
                         }
                     )
 
-                    # 상태 초기화
+                    # 상태 초기화 후 rerun하여 사이드바에 파일 즉시 반영
                     st.session_state.research_stage = "idle"
                     st.session_state.pending_plan = ""
                     st.session_state.pending_query = ""
+                    st.rerun()
 
             except Exception as e:
                 error_msg = f"오류가 발생했습니다: {e}"
