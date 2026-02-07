@@ -115,8 +115,8 @@ def _create_agent():
     all_tools = sub_agent_tools + built_in_tools + [task_tool]
 
     subagent_instructions = SUBAGENT_USAGE_INSTRUCTIONS.format(
-        max_concurrent_research_units=3,
-        max_researcher_iterations=3,
+        max_concurrent_research_units=1,
+        max_researcher_iterations=1,
         date=now.strftime("%a %b %-d, %Y"),
     )
 
