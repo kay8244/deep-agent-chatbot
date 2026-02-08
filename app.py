@@ -372,7 +372,10 @@ def _build_file_context(files: dict, max_chars: int = 50000) -> str:
 
     for group in [priority_files, other_files]:
         for fname, content in group.items():
-            entry = f"### 파일: {fname}\n{content}\n"
+            # 파일에서 URL 추출하여 헤더에 명시
+            url_match = re.search(r"\*\*URL:\*\*\s*(https?://\S+)", content)
+            url_line = f"출처 URL: {url_match.group(1)}" if url_match else "출처 URL: 없음"
+            entry = f"### 파일: {fname}\n{url_line}\n{content}\n"
             if total_chars + len(entry) > max_chars:
                 break
             context_parts.append(entry)
