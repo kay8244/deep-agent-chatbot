@@ -509,8 +509,16 @@ def _run_deep_research(agent, state: dict) -> tuple[str, dict, list[dict]]:
     if final_state is None:
         return "응답을 생성할 수 없습니다.", state.get("files", {}), []
 
-    response = _extract_ai_response(final_state.get("messages", []))
+    fallback_response = _extract_ai_response(final_state.get("messages", []))
     files = final_state.get("files", state.get("files", {}))
+
+    # 최종 보고서 파일이 있으면 그 내용을 화면 응답으로 사용
+    report_keywords = ("final", "comprehensive", "최종")
+    response = fallback_response
+    for fname, content in files.items():
+        if any(kw in fname.lower() for kw in report_keywords):
+            response = content
+            break
 
     # 이번 리서치에서 새로 생성된 파일에서만 출처 추출
     new_files = {k: v for k, v in files.items() if k not in files_before}
