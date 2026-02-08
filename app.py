@@ -444,7 +444,18 @@ def _run_follow_up_chat(history: list[dict], files: dict) -> str:
         f"## 리서치 자료\n\n{file_context}"
     )
 
-    lc_messages = [HumanMessage(content=system_msg)] + _to_langchain_messages(history)
+    # 대화 히스토리 변환 후 마지막 사용자 메시지에 출처 요구를 추가
+    lc_history = _to_langchain_messages(history)
+    citation_reminder = (
+        "\n\n[중요 지시] 위 질문에 답변할 때 반드시 모든 사실과 수치 옆에 "
+        "인라인 출처를 포함하세요. 형식: 문장 ([출처제목](URL)). "
+        "출처 URL은 위 '출처 URL 목록'에서 가져오세요. "
+        "서로 다른 내용에는 서로 다른 URL을 사용하세요. "
+        "답변 마지막에 ## 참고 문헌 섹션도 포함하세요."
+    )
+    if lc_history and isinstance(lc_history[-1], HumanMessage):
+        lc_history[-1] = HumanMessage(content=lc_history[-1].content + citation_reminder)
+    lc_messages = [HumanMessage(content=system_msg)] + lc_history
     with st.spinner("💬 답변 생성 중..."):
         response = model.invoke(lc_messages)
     if isinstance(response.content, str):
