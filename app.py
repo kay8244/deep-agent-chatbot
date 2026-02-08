@@ -348,6 +348,41 @@ def _run_normal_chat(history: list[dict]) -> str:
 
 
 # ── 후속 대화 (리서치 결과 기반) ──────────────────────────────
+def _extract_all_urls(content: str) -> list[tuple[str, str]]:
+    """파일 내용에서 모든 (제목, URL) 쌍을 추출합니다."""
+    urls = []
+    seen = set()
+    # **URL:** 패턴
+    for m in re.finditer(r"\*\*URL:\*\*\s*(https?://\S+)", content):
+        url = m.group(1)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    # markdown 링크 패턴 [title](url)
+    for m in re.finditer(r"\[([^\]]+)\]\((https?://[^\)]+)\)", content):
+        url = m.group(2)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+def _build_source_map(files: dict) -> str:
+    """모든 파일에서 URL을 추출하여 출처 매핑 테이블을 생성합니다."""
+    all_urls = {}  # url -> set of file names
+    for fname, content in files.items():
+        for url in _extract_all_urls(content):
+            all_urls.setdefault(url, set()).add(fname)
+
+    if not all_urls:
+        return ""
+
+    lines = ["## 출처 URL 목록 (인라인 출처에 반드시 이 URL을 사용하세요)"]
+    for i, (url, fnames) in enumerate(all_urls.items(), 1):
+        lines.append(f"{i}. {url} (관련 파일: {', '.join(fnames)})")
+    return "\n".join(lines)
+
+
 def _build_file_context(files: dict, max_chars: int = 50000) -> str:
     """리서치 파일 내용을 LLM 컨텍스트 문자열로 변환합니다.
 
@@ -355,6 +390,9 @@ def _build_file_context(files: dict, max_chars: int = 50000) -> str:
     """
     if not files:
         return ""
+
+    # 출처 매핑 테이블을 먼저 포함
+    source_map = _build_source_map(files)
 
     # 우선순위 파일 분류
     priority_keywords = ("final", "report", "findings", "comprehensive")
@@ -367,14 +405,13 @@ def _build_file_context(files: dict, max_chars: int = 50000) -> str:
         else:
             other_files[fname] = content
 
-    context_parts = []
-    total_chars = 0
+    context_parts = [source_map] if source_map else []
+    total_chars = len(source_map)
 
     for group in [priority_files, other_files]:
         for fname, content in group.items():
-            # 파일에서 URL 추출하여 헤더에 명시
-            url_match = re.search(r"\*\*URL:\*\*\s*(https?://\S+)", content)
-            url_line = f"출처 URL: {url_match.group(1)}" if url_match else "출처 URL: 없음"
+            urls = _extract_all_urls(content)
+            url_line = "출처 URLs: " + ", ".join(urls) if urls else "출처 URL: 없음 (에이전트 생성 요약)"
             entry = f"### 파일: {fname}\n{url_line}\n{content}\n"
             if total_chars + len(entry) > max_chars:
                 break
@@ -397,7 +434,8 @@ def _run_follow_up_chat(history: list[dict], files: dict) -> str:
         "- 모든 사실, 수치, 통계에는 반드시 인라인 출처를 달아야 합니다.\n"
         "- 형식: 문장 내용 ([출처제목](URL))\n"
         "- 예시: DRAM 가격이 15% 상승했다 ([TrendForce](https://trendforce.com/...)).\n"
-        "- 출처 URL은 리서치 자료의 **URL:** 필드에서 추출하세요.\n"
+        "- 반드시 '출처 URL 목록'에 있는 실제 URL을 사용하세요. 파일명을 출처로 쓰지 마세요.\n"
+        "- 서로 다른 사실에는 해당 내용이 포함된 서로 다른 출처 URL을 매칭하세요.\n"
         "- 답변 마지막에 '## 참고 문헌' 섹션을 추가하여 사용한 출처를 번호 매겨 나열하세요.\n\n"
         f"## 리서치 자료\n\n{file_context}"
     )
