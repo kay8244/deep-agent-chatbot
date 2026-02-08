@@ -154,7 +154,9 @@ def _create_agent():
 def _generate_plan(query: str) -> str:
     """사용자 질문을 받아 리서치 계획만 생성합니다 (실제 리서치는 수행하지 않음)."""
     model = _init_model()
+    today = datetime.now().strftime("%Y년 %m월 %d일")
     plan_prompt = (
+        f"오늘 날짜: {today}\n\n"
         "당신은 리서치 플래너입니다. 아래 질문에 대해 리서치 계획만 작성하세요.\n"
         "실제 리서치는 수행하지 마세요.\n\n"
         "다음 형식으로 번호 매긴 단계별 리스트를 작성하세요:\n"
@@ -426,7 +428,9 @@ def _run_follow_up_chat(history: list[dict], files: dict) -> str:
     model = _init_model()
     file_context = _build_file_context(files)
 
+    today = datetime.now().strftime("%Y년 %m월 %d일")
     system_msg = (
+        f"오늘 날짜: {today}\n\n"
         "당신은 리서치 결과를 바탕으로 후속 질문에 답변하는 어시스턴트입니다.\n"
         "아래에 리서치에서 수집된 파일 내용이 제공됩니다. "
         "이 자료를 근거로 정확하게 답변하세요.\n\n"
